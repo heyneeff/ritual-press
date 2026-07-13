@@ -1,0 +1,233 @@
+<title>LITURGY ENGINE — generative ritual poster</title>
+<style>
+  :root{
+    --tan:#D9C69A; --ink:#16130E; --red:#A5301F; --blue:#2A5B8C; --gold:#C98A2C;
+    --plastic:#211c15; --plastic-hi:#332b1f; --readout:#e8c877;
+  }
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--plastic); color:var(--readout);
+    font-family:"SF Mono", ui-monospace, Menlo, monospace;
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+    padding:22px 14px 40px; box-sizing:border-box;
+  }
+  header{display:flex; align-items:baseline; gap:14px; width:min(720px,100%); justify-content:space-between}
+  h1{font-size:13px; letter-spacing:.35em; margin:0; font-weight:600}
+  #seedbox{font-size:11px; letter-spacing:.15em; opacity:.75}
+  #stage{max-width:min(720px,100%);}
+  canvas{width:100%; height:auto; display:block; box-shadow:0 24px 60px rgba(0,0,0,.55); background:var(--tan)}
+  .deck{display:flex; gap:10px; width:min(720px,100%); flex-wrap:wrap}
+  button{
+    font:inherit; font-size:11px; letter-spacing:.25em; text-transform:uppercase;
+    color:var(--readout); background:linear-gradient(180deg,var(--plastic-hi),var(--plastic));
+    border:1px solid #4a3d29; border-radius:3px; padding:10px 18px; cursor:pointer;
+  }
+  button:hover{background:linear-gradient(180deg,#3f3524,var(--plastic-hi))}
+  button:focus-visible{outline:2px solid var(--readout); outline-offset:2px}
+  footer{font-size:10px; letter-spacing:.2em; opacity:.5; max-width:720px; text-align:center; line-height:1.8}
+</style>
+
+<header><h1>LITURGY&nbsp;ENGINE</h1><div id="seedbox"></div></header>
+<div id="stage"><canvas id="c" width="1480" height="2200" aria-label="Generated ritual poster"></canvas></div>
+<div class="deck">
+  <button id="reroll">⟲ Cast again</button>
+  <button id="save">⇩ Export PNG</button>
+</div>
+<footer>EVERY CAST IS A NEW ICON · COMBED ARCS · HALFTONE WEATHER · FOUR INKS ON TAN · FOR N — FROM THE MACHINE THAT LOOKED AT THE OWL</footer>
+
+<script>
+const cv=document.getElementById('c'), x=cv.getContext('2d');
+const W=cv.width, H=cv.height;
+const INK={tan:'#D9C69A', black:'#16130E', red:'#A5301F', blue:'#2A5B8C', gold:'#C98A2C', cream:'#EDE3C8'};
+
+// ---------- seeded rng ----------
+let seed;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let R;
+const rr=(a,b)=>a+R()*(b-a);
+const pick=arr=>arr[Math.floor(R()*arr.length)];
+const chance=p=>R()<p;
+
+// ---------- texture helpers ----------
+function halftone(x0,y0,w,h,color,step,rmax,clip){
+  x.save(); if(clip)clip(); x.fillStyle=color;
+  for(let j=y0;j<y0+h;j+=step){
+    for(let i=x0+((j/step|0)%2?step/2:0);i<x0+w;i+=step){
+      const t=(j-y0)/h;
+      const r=rmax*(0.35+0.65*Math.abs(Math.sin(t*Math.PI)));
+      x.beginPath(); x.arc(i,j,r,0,7); x.fill();
+    }
+  }
+  x.restore();
+}
+// concentric comb arcs — the signature stroke
+function comb(cx,cy,r0,r1,a0,a1,n,color,lw){
+  x.save(); x.strokeStyle=color; x.lineWidth=lw; x.lineCap='round';
+  for(let i=0;i<n;i++){
+    const r=r0+(r1-r0)*i/(n-1);
+    x.beginPath(); x.arc(cx,cy,r,a0,a1); x.stroke();
+  }
+  x.restore();
+}
+function grain(){
+  const im=x.getImageData(0,0,W,H), d=im.data;
+  const g=mulberry32(seed^0xBEEF);
+  for(let i=0;i<d.length;i+=4){
+    const n=(g()-0.5)*22;
+    d[i]+=n; d[i+1]+=n; d[i+2]+=n;
+  }
+  x.putImageData(im,0,0);
+}
+
+// ---------- glyphs for the registers ----------
+const GLYPHS={
+  skull(s){x.beginPath();x.arc(0,-s*.12,s*.42,Math.PI,0);x.lineTo(s*.42,s*.18);x.lineTo(s*.22,s*.4);x.lineTo(-s*.22,s*.4);x.lineTo(-s*.42,s*.18);x.closePath();x.fill();
+    x.save();x.globalCompositeOperation='destination-out';
+    x.beginPath();x.arc(-s*.17,-s*.08,s*.11,0,7);x.arc(s*.17,-s*.08,s*.11,0,7);x.fill();
+    x.beginPath();x.moveTo(0,s*.05);x.lineTo(s*.08,s*.22);x.lineTo(-s*.08,s*.22);x.closePath();x.fill();x.restore();},
+  sun(s){for(let i=0;i<12;i++){x.save();x.rotate(i*Math.PI/6);x.beginPath();x.moveTo(0,-s*.18);x.lineTo(s*.07,-s*.42);x.lineTo(-s*.07,-s*.42);x.closePath();x.fill();x.restore();}x.beginPath();x.arc(0,0,s*.17,0,7);x.fill();},
+  eye(s){x.beginPath();x.moveTo(-s*.45,0);x.quadraticCurveTo(0,-s*.42,s*.45,0);x.quadraticCurveTo(0,s*.42,-s*.45,0);x.fill();
+    x.save();x.globalCompositeOperation='destination-out';x.beginPath();x.arc(0,0,s*.13,0,7);x.fill();x.restore();},
+  hand(s){x.fillRect(-s*.3,0,s*.6,s*.38);for(let i=0;i<4;i++){x.fillRect(-s*.3+i*s*.16,-s*.34,s*.11,s*.36)}},
+  tri(s){for(const dx of[-s*.18,s*.18,0]){x.beginPath();x.moveTo(dx,-s*.3+(dx?s*.12:0));x.lineTo(dx+s*.22,s*.25+(dx?s*.12:0));x.lineTo(dx-s*.22,s*.25+(dx?s*.12:0));x.closePath();x.fill();}},
+  grainG(s){x.beginPath();x.moveTo(0,s*.4);x.lineTo(0,-s*.4);x.stroke();for(let i=0;i<3;i++){const yy=-s*.35+i*s*.22;x.beginPath();x.ellipse(-s*.15,yy,s*.14,s*.07,-.6,0,7);x.fill();x.beginPath();x.ellipse(s*.15,yy,s*.14,s*.07,.6,0,7);x.fill();}},
+  moon(s){x.beginPath();x.arc(0,0,s*.36,0,7);x.fill();x.save();x.globalCompositeOperation='destination-out';x.beginPath();x.arc(s*.14,-s*.06,s*.3,0,7);x.fill();x.restore();},
+  toad(s){x.beginPath();x.ellipse(0,s*.08,s*.36,s*.26,0,0,7);x.fill();x.beginPath();x.arc(-s*.16,-s*.16,s*.12,0,7);x.arc(s*.16,-s*.16,s*.12,0,7);x.fill();
+    x.save();x.globalCompositeOperation='destination-out';x.beginPath();x.arc(-s*.16,-s*.16,s*.05,0,7);x.arc(s*.16,-s*.16,s*.05,0,7);x.fill();x.restore();}
+};
+
+function register(y,hgt,inks){
+  const n=9, cw=(W-160)/n;
+  x.fillStyle=INK.black; x.fillRect(80,y,W-160,hgt);
+  const names=Object.keys(GLYPHS);
+  const seq=[];
+  for(let i=0;i<Math.ceil(n/2);i++)seq.push(pick(names));
+  const full=[...seq,...seq.slice(0,n-seq.length).reverse()];
+  for(let i=0;i<n;i++){
+    x.strokeStyle=INK.tan;x.lineWidth=3;x.strokeRect(80+i*cw+6,y+6,cw-12,hgt-12);
+    x.save();x.translate(80+i*cw+cw/2,y+hgt/2);
+    x.fillStyle=pick(inks);x.strokeStyle=x.fillStyle;x.lineWidth=6;
+    GLYPHS[full[i]](hgt*.9);
+    x.restore();
+  }
+}
+
+// ---------- the cast ----------
+function cast(newSeed){
+  seed=newSeed??(Math.random()*1e9|0);
+  R=mulberry32(seed);
+  document.getElementById('seedbox').textContent='SEED '+String(seed).padStart(10,'0');
+  const cx=W/2;
+
+  // ground
+  x.globalCompositeOperation='source-over';
+  x.fillStyle=INK.tan; x.fillRect(0,0,W,H);
+
+  // frame
+  x.strokeStyle=INK.black;x.lineWidth=10;x.strokeRect(60,60,W-120,H-120);
+  x.strokeStyle=pick([INK.red,INK.gold]);x.lineWidth=4;x.strokeRect(84,84,W-168,H-168);
+
+  // halftone weather panels behind the arch
+  const wCol=pick([INK.red,INK.blue]);
+  halftone(100,330,W-200,760,wCol,26,7);
+
+  // great arch of combs (the wings)
+  const wingInk=wCol===INK.red?INK.blue:INK.red;
+  const cyA=rr(H*.36,H*.42);
+  comb(cx,cyA,300,640,Math.PI*1.05,Math.PI*1.95,pick([7,9,11]),INK.black,14);
+  comb(cx,cyA,320,600,Math.PI*0.12,Math.PI*0.88,pick([6,8]),wingInk,12); // lower bowl
+  // asymmetry break: one extra arc on one side only
+  const side=chance(.5)?1:-1;
+  comb(cx+side*40,cyA,660,700,Math.PI*1.1,Math.PI*1.5,2,INK.gold,10);
+
+  // dome
+  x.fillStyle=INK.blue;
+  x.beginPath();x.arc(cx,cyA,280,Math.PI,0);x.closePath();x.fill();
+  halftone(cx-280,cyA-280,560,280,INK.cream,30,6,()=>{x.beginPath();x.arc(cx,cyA,270,Math.PI,0);x.clip();});
+
+  // eye stack
+  const eyeY=cyA-60;
+  x.fillStyle=INK.gold;x.beginPath();x.moveTo(cx,eyeY-190);x.lineTo(cx+120,eyeY+60);x.lineTo(cx-120,eyeY+60);x.closePath();x.fill();
+  x.strokeStyle=INK.black;x.lineWidth=10;x.stroke();
+  x.save();x.translate(cx,eyeY);x.fillStyle=INK.black;GLYPHS.eye(340);x.restore();
+  x.fillStyle=pick([INK.red,INK.gold]);x.beginPath();x.arc(cx,eyeY,46,0,7);x.fill();
+  x.fillStyle=INK.black;x.beginPath();x.arc(cx,eyeY,20,0,7);x.fill();
+
+  // face disc
+  const fy=cyA+180;
+  x.fillStyle=INK.black;x.beginPath();x.arc(cx,fy,230,0,7);x.fill();
+  x.fillStyle=INK.cream;
+  for(const s of[-1,1]){x.beginPath();x.arc(cx+s*95,fy-20,62,0,7);x.fill();}
+  x.fillStyle=INK.red;
+  for(const s of[-1,1]){x.beginPath();x.arc(cx+s*95,fy-20,26,0,7);x.fill();}
+  x.fillStyle=pick([INK.gold,INK.red]);
+  x.beginPath();x.moveTo(cx,fy+20);x.lineTo(cx+42,fy+86);x.lineTo(cx-42,fy+86);x.closePath();x.fill();
+  // beak-comb whiskers
+  comb(cx,fy+30,250,330,Math.PI*.15,Math.PI*.85,5,INK.black,10);
+
+  // collar band
+  x.fillStyle=wingInk;x.fillRect(cx-260,fy+240,520,90);
+  x.fillStyle=INK.cream;
+  for(let i=0;i<8;i++){x.beginPath();x.arc(cx-224+i*64,fy+285,14,0,7);x.fill();}
+
+  // skirt
+  x.fillStyle=INK.black;
+  x.beginPath();x.moveTo(cx-260,fy+330);x.lineTo(cx+260,fy+330);x.lineTo(cx+380,H-560);x.lineTo(cx-380,H-560);x.closePath();x.fill();
+  x.strokeStyle=INK.tan;x.lineWidth=6;
+  for(let i=-4;i<=4;i++){x.beginPath();x.moveTo(cx+i*52,fy+340);x.lineTo(cx+i*76,H-570);x.stroke();}
+
+  // the sea at the base — wave combs + the small boat (always)
+  const seaY=H-560;
+  x.save();x.beginPath();x.rect(100,seaY,W-200,340);x.clip();
+  x.fillStyle=INK.blue;x.fillRect(100,seaY,W-200,340);
+  for(let row=0;row<3;row++){
+    for(let i=0;i<7;i++){
+      const wx=140+i*220+(row%2?110:0), wy=seaY+70+row*105;
+      comb(wx,wy+90,30,95,Math.PI*1.05,Math.PI*2.0,8,INK.cream,7);
+    }
+  }
+  // boat — off-axis, in a calm pocket. the quiet part.
+  const bx=cx+side*rr(120,300), by=seaY+rr(90,200);
+  x.fillStyle=INK.gold;
+  x.beginPath();x.moveTo(bx-70,by);x.quadraticCurveTo(bx,by+52,bx+70,by);x.lineTo(bx+52,by-16);x.lineTo(bx-52,by-16);x.closePath();x.fill();
+  x.fillStyle=INK.red;
+  x.beginPath();x.arc(bx-8,by-38,15,0,7);x.fill();x.fillRect(bx-16,by-30,18,26);
+  x.strokeStyle=INK.red;x.lineWidth=7;x.beginPath();x.moveTo(bx+2,by-24);x.lineTo(bx+46,by+6);x.stroke();
+  x.restore();
+
+  // candles, uneven drips
+  for(const s of[-1,1]){
+    const kx=cx+s*560, ky=fy+140;
+    x.fillStyle=INK.cream;x.beginPath();x.ellipse(kx,ky,64,20,0,0,7);x.fill();
+    x.fillStyle=INK.black;x.fillRect(kx-64,ky,128,26);
+    x.fillStyle=INK.red;
+    x.beginPath();x.moveTo(kx,ky-78);x.quadraticCurveTo(kx+20,ky-40,kx,ky-16);x.quadraticCurveTo(kx-20,ky-40,kx,ky-78);x.fill();
+    const drips=s===side?3:2;
+    for(let d=0;d<drips;d++){x.beginPath();x.arc(kx-30+d*30,ky+40+rr(10,60),9,0,7);x.fill();}
+  }
+
+  // smoke tendrils — different rhythm each side (the deliberate break)
+  x.strokeStyle=INK.cream;x.lineWidth=26;x.lineCap='round';
+  for(const s of[-1,1]){
+    x.beginPath();
+    let sx=cx+s*430, sy=470;
+    x.moveTo(sx,sy);
+    const k=s===side?1.6:1.0;
+    x.bezierCurveTo(sx+s*60*k,sy-90, sx-s*50,sy-170, sx+s*30*k,sy-260);
+    x.stroke();
+  }
+
+  // registers top & bottom
+  register(110,150,[INK.cream,INK.gold,INK.red,INK.blue]);
+  register(H-260,150,[INK.gold,INK.cream,INK.blue,INK.red]);
+
+  grain();
+}
+
+document.getElementById('reroll').onclick=()=>cast();
+document.getElementById('save').onclick=()=>{
+  const a=document.createElement('a');
+  a.download='liturgy-'+seed+'.png'; a.href=cv.toDataURL('image/png'); a.click();
+};
+cast(271828);
+</script>

@@ -1,0 +1,525 @@
+<title>RITUAL PRESS v0 — constrained vector studio</title>
+<style>
+  :root{
+    --plastic:#1d1812; --plastic2:#2a2318; --plastic3:#38301f;
+    --bezel:#4a3d29; --readout:#e8c877; --readout-dim:#8a7648;
+    --crt:#7fd18a; --alert:#d8703f;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; height:100vh; overflow:hidden; background:var(--plastic);
+    color:var(--readout); font-family:"SF Mono", ui-monospace, Menlo, monospace;
+    display:grid; grid-template-rows:46px 1fr; user-select:none;
+  }
+  /* ---------- top bar ---------- */
+  #topbar{
+    display:flex; align-items:center; gap:16px; padding:0 16px;
+    background:linear-gradient(180deg,var(--plastic3),var(--plastic2));
+    border-bottom:2px solid var(--bezel);
+  }
+  #topbar h1{font-size:12px; letter-spacing:.4em; margin:0; font-weight:600}
+  #topbar .lamp{width:9px;height:9px;border-radius:50%;background:var(--crt);box-shadow:0 0 8px var(--crt)}
+  #topbar .spacer{flex:1}
+  #jmode.on{background:var(--alert);color:#1d1812;box-shadow:0 0 14px var(--alert)}
+  /* ---------- main ---------- */
+  #main{display:grid; grid-template-columns:190px 1fr 210px; min-height:0}
+  .panel{background:var(--plastic2); border-right:2px solid var(--bezel); padding:10px; overflow-y:auto; display:flex; flex-direction:column; gap:14px}
+  .panel:last-child{border-right:none; border-left:2px solid var(--bezel)}
+  .plabel{font-size:9px; letter-spacing:.3em; color:var(--readout-dim); margin:0 0 6px}
+  /* buttons */
+  button{
+    font:inherit; font-size:10px; letter-spacing:.12em; color:var(--readout);
+    background:linear-gradient(180deg,var(--plastic3),var(--plastic2));
+    border:1px solid var(--bezel); border-radius:3px; padding:7px 8px; cursor:pointer; text-align:left;
+  }
+  button:hover{background:var(--plastic3)}
+  button:focus-visible{outline:2px solid var(--readout); outline-offset:1px}
+  button.active{background:var(--readout); color:var(--plastic); font-weight:700}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:5px}
+  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px}
+  .grid3 button{text-align:center; padding:7px 2px}
+  /* stage */
+  #stagewrap{display:flex; align-items:center; justify-content:center; min-width:0; min-height:0; background:
+    repeating-conic-gradient(var(--plastic) 0 25%, #221c14 0 50%) 0 0/28px 28px;}
+  #stage{position:relative; box-shadow:0 24px 70px rgba(0,0,0,.6)}
+  canvas{display:block}
+  /* palette chips */
+  .chips{display:flex; gap:6px; flex-wrap:wrap}
+  .chip{width:30px; height:30px; border-radius:3px; border:2px solid var(--bezel); cursor:pointer; padding:0}
+  .chip.sel{border-color:var(--readout); box-shadow:0 0 10px var(--readout)}
+  .palrow{display:flex; gap:4px; margin-bottom:4px; cursor:pointer; border:1px solid transparent; border-radius:3px; padding:3px}
+  .palrow.sel{border-color:var(--readout)}
+  .palrow div{flex:1; height:16px; border-radius:2px}
+  /* layers */
+  #layers{display:flex; flex-direction:column-reverse; gap:3px}
+  .lay{display:flex; align-items:center; gap:6px; padding:5px 6px; border:1px solid var(--bezel); border-radius:3px; font-size:10px; cursor:pointer; background:var(--plastic)}
+  .lay.sel{border-color:var(--readout); background:var(--plastic3)}
+  .lay .sw{width:12px;height:12px;border-radius:2px;flex:none}
+  .lay .nm{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .lay .ko{font-size:9px; color:var(--alert)}
+  #readout{font-size:9px; letter-spacing:.15em; color:var(--crt); min-height:28px; line-height:1.5}
+  hr{border:none; border-top:1px solid var(--bezel); margin:2px 0}
+</style>
+
+<div id="topbar">
+  <span class="lamp"></span><h1>RITUAL&nbsp;PRESS</h1>
+  <span style="font-size:9px;letter-spacing:.2em;color:var(--readout-dim)">CONSTRAINED VECTOR STUDIO · v0</span>
+  <span class="spacer"></span>
+  <button id="jmode" title="J MODE: symmetry liturgy — placements mirror across the axis, registers lock in">◈ J MODE</button>
+  <button id="undo">⟲ UNDO</button>
+  <button id="export">⇩ PNG</button>
+</div>
+
+<div id="main">
+  <!-- LEFT: shapes + pathfinder + texture -->
+  <div class="panel">
+    <div><p class="plabel">SHAPES</p>
+      <div class="grid2">
+        <button data-shape="rect">▮ RECT</button>
+        <button data-shape="circle">● DISC</button>
+        <button data-shape="tri">▲ TRI</button>
+        <button data-shape="diamond">◆ DIA</button>
+        <button data-shape="arc">◠ ARC</button>
+        <button data-shape="comb">≋ COMB</button>
+        <button data-shape="burst">✳ BURST</button>
+        <button data-shape="moon">☾ MOON</button>
+        <button data-shape="eye">◉ EYE</button>
+        <button data-shape="drop">▼ DROP</button>
+      </div>
+    </div>
+    <div><p class="plabel">PATHFINDER</p>
+      <div class="grid2">
+        <button id="op-knock">⊘ KNOCK</button>
+        <button id="op-solid">⊕ SOLID</button>
+        <button id="op-clip">⊂ CLIP</button>
+        <button id="op-free">⊃ FREE</button>
+      </div>
+      <p style="font-size:9px;color:var(--readout-dim);line-height:1.6;margin:6px 0 0">KNOCK cuts the shape out of everything under it. CLIP confines it inside the shape one layer below. SOLID / FREE undo them.</p>
+    </div>
+    <div><p class="plabel">TEXTURE</p>
+      <div class="grid2">
+        <button data-fill="solid">FLAT</button>
+        <button data-fill="halftone">HALFTONE</button>
+        <button data-fill="comblines">COMBED</button>
+        <button data-fill="hatch">HATCH</button>
+        <button data-fill="stipple">STIPPLE</button>
+        <button data-fill="riso">RISO GRAIN</button>
+        <button data-fill="drybrush">DRY BRUSH</button>
+        <button data-fill="aquatint">AQUATINT</button>
+      </div>
+      <hr style="margin:8px 0">
+      <button id="grain" style="width:100%">▒ PAPER GRAIN ON EXPORT</button>
+    </div>
+    <div><p class="plabel">BRUSHES — MASK FIRST</p>
+      <div class="grid2">
+        <button data-brush="stipple">⁖ STIPPLE</button>
+        <button data-brush="grit">▒ GRIT</button>
+        <button data-brush="dry">〰 DRY</button>
+        <button data-brush="off">✕ OFF</button>
+      </div>
+      <div class="grid3" style="margin-top:5px">
+        <button data-bsize="9">S</button><button data-bsize="18">M</button><button data-bsize="32">L</button>
+      </div>
+      <p style="font-size:9px;color:var(--readout-dim);line-height:1.6;margin:6px 0 0">SELECT A SHAPE FIRST AND EVERY STROKE STAYS INSIDE IT — COLORING INSIDE THE LINES, GUARANTEED.</p>
+    </div>
+    <div><p class="plabel">ARRANGE</p>
+      <div class="grid3">
+        <button data-al="l">⇤</button><button data-al="cx">↔</button><button data-al="r">⇥</button>
+        <button data-al="t">⤒</button><button data-al="cy">↕</button><button data-al="b">⤓</button>
+      </div>
+      <div class="grid2" style="margin-top:5px">
+        <button id="mirror">⧉ MIRROR</button>
+        <button id="dup">⌗ DUPE</button>
+        <button id="up">▲ RAISE</button>
+        <button id="down">▼ LOWER</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: canvas -->
+  <div id="stagewrap"><div id="stage">
+    <canvas id="art" width="740" height="1100" style="width:min(46vw,460px)"></canvas>
+  </div></div>
+
+  <!-- RIGHT: inks + layers -->
+  <div class="panel">
+    <div><p class="plabel">PALETTE — PICK A WORLD</p><div id="pals"></div></div>
+    <div><p class="plabel">INK</p><div class="chips" id="chips"></div></div>
+    <div style="flex:1"><p class="plabel">LAYERS</p><div id="layers"></div></div>
+    <div id="readout">READY.</div>
+  </div>
+</div>
+
+<script>
+const cv=document.getElementById('art'), x=cv.getContext('2d');
+const W=cv.width, H=cv.height;
+
+// ---------- locked palettes: ink 0 is always the ground ----------
+const PALETTES=[
+  {name:'OWL',   inks:['#D9C69A','#16130E','#A5301F','#2A5B8C','#C98A2C','#EDE3C8']},
+  {name:'BUFO',  inks:['#120910','#1C0F1C','#D93A4E','#7B3FA0','#F2788C','#F5B8C4']},
+  {name:'MASK',  inks:['#E4D3A1','#1B1B18','#D99C27','#2E7E80','#B23A2A','#27476E']},
+  {name:'TIDE',  inks:['#101018','#EDE3C8','#2A5B8C','#C98A2C','#A5301F','#5B84AE']},
+];
+let palIx=0, inkIx=1;
+
+// ---------- document model ----------
+let shapes=[];       // {id,kind,cx,cy,w,h,ink,fill,knock,clipped,clipId,seed, pts?/brush?/size?}
+let sel=-1, history=[], uid=0;
+let jmode=false, grainOn=true;
+let tool=null, fillMode='solid', brushTool=null, brushSize=16;
+
+const snap8=v=>Math.round(v/8)*8;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const hostOf=s=>s.clipId!=null?shapes.find(t=>t.id===s.clipId):null;
+function pushHistory(){history.push(JSON.stringify(shapes)); if(history.length>60)history.shift();}
+
+// ---------- shape rendering ----------
+function tracePath(s){
+  const {kind,w,h}=s;
+  x.beginPath();
+  if(kind==='rect') x.rect(-w/2,-h/2,w,h);
+  else if(kind==='circle') x.ellipse(0,0,w/2,h/2,0,0,7);
+  else if(kind==='tri'){x.moveTo(0,-h/2);x.lineTo(w/2,h/2);x.lineTo(-w/2,h/2);x.closePath();}
+  else if(kind==='diamond'){x.moveTo(0,-h/2);x.lineTo(w/2,0);x.lineTo(0,h/2);x.lineTo(-w/2,0);x.closePath();}
+  else if(kind==='drop'){x.moveTo(0,h/2);x.quadraticCurveTo(-w/2,-h/6,0,-h/2);x.quadraticCurveTo(w/2,-h/6,0,h/2);}
+  else if(kind==='moon'){x.arc(0,0,Math.min(w,h)/2,0,7);}
+  else if(kind==='eye'){x.moveTo(-w/2,0);x.quadraticCurveTo(0,-h,w/2,0);x.quadraticCurveTo(0,h,-w/2,0);}
+  else if(kind==='arc'){x.arc(0,h/4,Math.min(w,h)/2,Math.PI,0);x.closePath();}
+  else if(kind==='burst'){const n=12,r1=Math.min(w,h)/2,r0=r1*.45;
+    for(let i=0;i<n*2;i++){const r=i%2?r0:r1,a=i*Math.PI/n-Math.PI/2;x[i?'lineTo':'moveTo'](r*Math.cos(a),r*Math.sin(a));}x.closePath();}
+  else if(kind==='comb'){x.rect(-w/2,-h/2,w,h);} // bbox; strokes drawn in paint
+}
+function paint(s,ghost,below){
+  const ink=PALETTES[palIx].inks[s.ink];
+  x.save();
+  if(s.clipped&&below&&below.kind!=='comb'&&below.kind!=='brush'){
+    x.translate(below.cx,below.cy); tracePath(below); x.clip();
+    x.translate(s.cx-below.cx,s.cy-below.cy);
+  } else x.translate(s.cx,s.cy);
+  x.globalCompositeOperation = s.knock&&!ghost ? 'destination-out':'source-over';
+
+  if(s.kind==='brush'){
+    const g=mulberry32(s.seed||3);
+    x.fillStyle=ink;
+    for(const p of s.pts){
+      const dabs=s.brush==='grit'?16:s.brush==='dry'?5:9;
+      for(let i=0;i<dabs;i++){
+        const a=g()*7, r=Math.sqrt(g())*s.size;
+        const dx=p[0]+Math.cos(a)*r, dy=p[1]+Math.sin(a)*r;
+        if(s.brush==='grit') x.fillRect(dx,dy,1.4,1.4);
+        else if(s.brush==='dry'){x.globalAlpha=(ghost?.4:1)*(.35+g()*.5);x.fillRect(dx,dy,4+g()*14,1.6);}
+        else {x.beginPath();x.arc(dx,dy,.7+g()*1.5,0,7);x.fill();}
+      }
+    }
+    x.restore(); return;
+  }
+  x.globalAlpha = ghost?0.4:1;
+
+  if(s.kind==='comb'){
+    x.strokeStyle=ink; x.lineWidth=Math.max(3,s.h/22); x.lineCap='round';
+    const n=7;
+    for(let i=0;i<n;i++){const r=(s.h*0.25)+(s.h*0.75)*(i/(n-1));
+      x.beginPath(); x.arc(0,s.h/2,Math.min(r,s.w/2*(0.3+0.7*i/(n-1))+r*0.001)||r, Math.PI,0); x.stroke();}
+    x.restore(); return;
+  }
+  if(s.kind==='moon'){
+    tracePath(s); x.fillStyle=ink; x.fill();
+    if(!s.knock){x.globalCompositeOperation='destination-out';
+      x.beginPath();x.arc(s.w*0.18,-s.h*0.08,Math.min(s.w,s.h)/2*.82,0,7);x.fill();}
+    x.restore(); return;
+  }
+  tracePath(s);
+  if(s.fill==='solid'||s.knock){ x.fillStyle=ink; x.fill(); }
+  else {
+    x.save(); x.clip();
+    x.fillStyle=ink; x.strokeStyle=ink;
+    if(s.fill==='halftone'){
+      const st=14;
+      for(let j=-s.h/2;j<s.h/2;j+=st)for(let i=-s.w/2+((j/st|0)%2?st/2:0);i<s.w/2;i+=st){
+        const r=2+3*Math.abs(Math.sin((j+s.h/2)/s.h*Math.PI));
+        x.beginPath();x.arc(i,j,r,0,7);x.fill();}
+    } else if(s.fill==='comblines'){
+      x.lineWidth=4;
+      for(let i=0;i<8;i++){const r=(Math.max(s.w,s.h))*(0.15+0.85*i/7);
+        x.beginPath();x.arc(0,s.h/2,r,Math.PI,0);x.stroke();}
+    } else if(s.fill==='hatch'){
+      x.lineWidth=3;
+      for(let i=-s.w;i<s.w;i+=12){x.beginPath();x.moveTo(i,-s.h/2);x.lineTo(i+s.h/2,s.h/2);x.stroke();}
+    } else if(s.fill==='stipple'){
+      // mezzotint-style: dot density carries the tone, darker toward the base
+      const g=mulberry32(s.seed||7), n=(s.w*s.h)/26;
+      for(let i=0;i<n;i++){
+        const px=(g()-.5)*s.w, py=(g()-.5)*s.h, t=(py+s.h/2)/s.h;
+        if(g()<t*.92+.06){x.beginPath();x.arc(px,py,.9+g()*1.7,0,7);x.fill();}
+      }
+    } else if(s.fill==='riso'){
+      // risograph grain: uniform fine speck, the True Grit staple
+      const g=mulberry32((s.seed||7)^99), n=(s.w*s.h)/12;
+      for(let i=0;i<n;i++){ if(g()<.45)continue;
+        x.fillRect((g()-.5)*s.w,(g()-.5)*s.h,1.3,1.3); }
+    } else if(s.fill==='drybrush'){
+      const g=mulberry32((s.seed||7)^7);
+      for(let j=-s.h/2;j<s.h/2;j+=5){
+        let i=-s.w/2;
+        while(i<s.w/2){ const len=8+g()*46, gap=3+g()*26;
+          if(g()<.75){x.globalAlpha=(ghost?.4:1)*(.45+g()*.55);x.fillRect(i,j,len,2+g()*2);}
+          i+=len+gap; }
+      }
+      x.globalAlpha=ghost?.4:1;
+    } else if(s.fill==='aquatint'){
+      // goya's darkness: dense etched speck with breathing voids
+      const g=mulberry32((s.seed||7)^0xA9);
+      const voids=[]; for(let v=0;v<6;v++)voids.push([(g()-.5)*s.w,(g()-.5)*s.h,s.w*(0.06+g()*0.13)]);
+      const n=(s.w*s.h)/5;
+      for(let i=0;i<n;i++){
+        const px=(g()-.5)*s.w, py=(g()-.5)*s.h;
+        let inVoid=false;
+        for(const[vx,vy,vr]of voids){const dd=(px-vx)*(px-vx)+(py-vy)*(py-vy);
+          if(dd<vr*vr&&g()<.85){inVoid=true;break;}}
+        if(!inVoid&&g()<.8) x.fillRect(px,py,1.4+g()*1.6,1.1+g()*1.5);
+      }
+    }
+    x.restore();
+    tracePath(s); x.lineWidth=2; x.strokeStyle=ink; x.stroke();
+  }
+  x.restore();
+}
+
+// ---------- render ----------
+function render(){
+  x.globalCompositeOperation='source-over'; x.globalAlpha=1;
+  x.fillStyle=PALETTES[palIx].inks[0]; x.fillRect(0,0,W,H);
+  shapes.forEach((s,i)=>paint(s,false,hostOf(s)||(i>0?shapes[i-1]:null)));
+  // snap guides while dragging
+  if(drag&&drag.guides){
+    x.save(); x.strokeStyle='#7fd18a'; x.globalAlpha=.7; x.lineWidth=1; x.setLineDash([3,5]);
+    for(const g of drag.guides){ x.beginPath();
+      if(g.v!==undefined){x.moveTo(g.v,0);x.lineTo(g.v,H);}else{x.moveTo(0,g.h);x.lineTo(W,g.h);}
+      x.stroke(); }
+    x.restore();
+  }
+  // j-mode scaffold
+  if(jmode){
+    x.save(); x.globalAlpha=.35; x.strokeStyle='#e8c877'; x.setLineDash([6,6]); x.lineWidth=1;
+    x.beginPath();x.moveTo(W/2,0);x.lineTo(W/2,H);x.stroke();
+    x.strokeRect(40,40,W-80,90); x.strokeRect(40,H-130,W-80,90);
+    x.strokeRect(30,30,W-60,H-60);
+    x.restore();
+  }
+  // selection
+  if(sel>=0&&shapes[sel]){
+    const s=shapes[sel];
+    x.save(); x.strokeStyle='#7fd18a'; x.lineWidth=1.5; x.setLineDash([5,4]);
+    x.strokeRect(s.cx-s.w/2-4,s.cy-s.h/2-4,s.w+8,s.h+8); x.restore();
+  }
+  renderLayers();
+}
+function renderLayers(){
+  const el=document.getElementById('layers'); el.innerHTML='';
+  shapes.forEach((s,i)=>{
+    const d=document.createElement('div'); d.className='lay'+(i===sel?' sel':'');
+    d.innerHTML=`<span class="sw" style="background:${PALETTES[palIx].inks[s.ink]}"></span>
+      <span class="nm">${s.kind==='brush'?('BRUSH·'+s.brush):s.kind.toUpperCase()+(s.fill!=='solid'?'·'+s.fill:'')}</span>
+      ${s.knock?'<span class="ko">KNOCK</span>':''}${s.clipped?'<span class="ko" style="color:#7fd18a">CLIP</span>':''}`;
+    d.onclick=()=>{sel=i; tool=null; syncToolButtons(); render();};
+    el.appendChild(d);
+  });
+}
+function say(msg){document.getElementById('readout').textContent=msg.toUpperCase();}
+
+// ---------- palette UI ----------
+function buildPalettes(){
+  const pl=document.getElementById('pals'); pl.innerHTML='';
+  PALETTES.forEach((p,i)=>{
+    const row=document.createElement('div'); row.className='palrow'+(i===palIx?' sel':'');
+    row.title=p.name;
+    p.inks.forEach(c=>{const sw=document.createElement('div'); sw.style.background=c; row.appendChild(sw);});
+    row.onclick=()=>{palIx=i; inkIx=Math.min(inkIx,p.inks.length-1); buildPalettes(); buildChips(); render(); say('WORLD: '+p.name+' — same shapes, new inks');};
+    pl.appendChild(row);
+  });
+}
+function buildChips(){
+  const ch=document.getElementById('chips'); ch.innerHTML='';
+  PALETTES[palIx].inks.forEach((c,i)=>{
+    const b=document.createElement('button'); b.className='chip'+(i===inkIx?' sel':''); b.style.background=c;
+    b.title=i===0?'ground':'ink '+i;
+    b.onclick=()=>{inkIx=i; buildChips();
+      if(sel>=0){pushHistory(); shapes[sel].ink=i; render();}};
+    ch.appendChild(b);
+  });
+}
+
+// ---------- tools ----------
+document.querySelectorAll('[data-shape]').forEach(b=>b.onclick=()=>{
+  tool=b.dataset.shape; brushTool=null; sel=-1; syncToolButtons(); render();
+  say('DRAG ON CANVAS TO PLACE '+tool);
+});
+document.querySelectorAll('[data-brush]').forEach(b=>b.onclick=()=>{
+  brushTool=b.dataset.brush==='off'?null:b.dataset.brush; tool=null; syncToolButtons();
+  say(brushTool?(sel>=0?'brushing inside the '+shapes[sel].kind+' — strokes cannot leave it'
+    :'brush free — select a shape first to mask strokes inside it'):'brush off — back to select');
+});
+document.querySelectorAll('[data-bsize]').forEach(b=>b.onclick=()=>{
+  brushSize=+b.dataset.bsize; syncToolButtons(); say('brush size '+brushSize);
+});
+document.querySelectorAll('[data-fill]').forEach(b=>b.onclick=()=>{
+  fillMode=b.dataset.fill; syncToolButtons();
+  if(sel>=0){pushHistory(); shapes[sel].fill=fillMode; render();}
+  say('TEXTURE: '+fillMode);
+});
+function syncToolButtons(){
+  document.querySelectorAll('[data-shape]').forEach(b=>b.classList.toggle('active',b.dataset.shape===tool));
+  document.querySelectorAll('[data-fill]').forEach(b=>b.classList.toggle('active',b.dataset.fill===fillMode));
+  document.querySelectorAll('[data-brush]').forEach(b=>b.classList.toggle('active',b.dataset.brush===brushTool));
+  document.querySelectorAll('[data-bsize]').forEach(b=>b.classList.toggle('active',+b.dataset.bsize===brushSize));
+}
+
+// pathfinder
+document.getElementById('op-knock').onclick=()=>{ if(sel<0)return say('select a shape first');
+  pushHistory(); shapes[sel].knock=true; render(); say('shape now cuts everything beneath it'); };
+document.getElementById('op-solid').onclick=()=>{ if(sel<0)return say('select a shape first');
+  pushHistory(); shapes[sel].knock=false; render(); say('shape paints again'); };
+document.getElementById('op-clip').onclick=()=>{ if(sel<0)return say('select a shape first');
+  if(sel===0)return say('nothing below it to conform to');
+  pushHistory(); shapes[sel].clipped=true; shapes[sel].clipId=shapes[sel-1].id; render();
+  say('conformed — paints only inside '+shapes[sel-1].kind+' below'); };
+document.getElementById('op-free').onclick=()=>{ if(sel<0)return say('select a shape first');
+  pushHistory(); shapes[sel].clipped=false; shapes[sel].clipId=null; render(); say('freed from the shape below'); };
+
+// arrange
+document.querySelectorAll('[data-al]').forEach(b=>b.onclick=()=>{
+  if(sel<0)return say('select a shape first');
+  pushHistory(); const s=shapes[sel], m=40;
+  const a=b.dataset.al;
+  if(a==='l')s.cx=m+s.w/2; if(a==='cx')s.cx=W/2; if(a==='r')s.cx=W-m-s.w/2;
+  if(a==='t')s.cy=m+s.h/2; if(a==='cy')s.cy=H/2; if(a==='b')s.cy=H-m-s.h/2;
+  render(); say('aligned '+a);
+});
+document.getElementById('mirror').onclick=()=>{ if(sel<0)return say('select a shape first');
+  pushHistory(); const s={...shapes[sel]}; s.cx=W-s.cx; shapes.push(s); sel=shapes.length-1; render(); say('mirrored across the axis'); };
+document.getElementById('dup').onclick=()=>{ if(sel<0)return say('select a shape first');
+  pushHistory(); const s={...shapes[sel]}; s.cx+=24; s.cy+=24; shapes.push(s); sel=shapes.length-1; render(); say('duplicated'); };
+document.getElementById('up').onclick=()=>{ if(sel<0||sel>=shapes.length-1)return;
+  pushHistory(); [shapes[sel],shapes[sel+1]]=[shapes[sel+1],shapes[sel]]; sel++; render(); };
+document.getElementById('down').onclick=()=>{ if(sel<1)return;
+  pushHistory(); [shapes[sel],shapes[sel-1]]=[shapes[sel-1],shapes[sel]]; sel--; render(); };
+
+// j mode / grain / undo / export
+document.getElementById('jmode').onclick=e=>{ jmode=!jmode; e.currentTarget.classList.toggle('on',jmode); render();
+  say(jmode?'J MODE — every placement mirrors; the liturgy holds':'j mode off'); };
+document.getElementById('grain').onclick=e=>{ grainOn=!grainOn; e.currentTarget.classList.toggle('active',grainOn);
+  say('paper grain on export: '+(grainOn?'on':'off')); };
+document.getElementById('undo').onclick=()=>{ if(!history.length)return say('nothing to undo');
+  shapes=JSON.parse(history.pop()); sel=-1; render(); say('undone'); };
+document.getElementById('export').onclick=()=>{
+  const out=document.createElement('canvas'); out.width=W*2; out.height=H*2;
+  const ox=out.getContext('2d'); ox.imageSmoothingEnabled=false;
+  const keep={jmode,selv:sel}; jmode=false; sel=-1; render();
+  ox.drawImage(cv,0,0,out.width,out.height);
+  if(grainOn){ const im=ox.getImageData(0,0,out.width,out.height), d=im.data;
+    for(let i=0;i<d.length;i+=4){const n=(Math.random()-.5)*18; d[i]+=n;d[i+1]+=n;d[i+2]+=n;}
+    ox.putImageData(im,0,0); }
+  jmode=keep.jmode; sel=keep.selv; render();
+  const a=document.createElement('a'); a.download='ritual-press.png'; a.href=out.toDataURL('image/png'); a.click();
+  say('exported 2x png');
+};
+
+// ---------- canvas interaction ----------
+function evPos(e){const r=cv.getBoundingClientRect();
+  return {px:(e.clientX-r.left)*W/r.width, py:(e.clientY-r.top)*H/r.height};}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  const {px,py}=evPos(e); cv.setPointerCapture(e.pointerId);
+  if(brushTool){ pushHistory();
+    const host=sel>=0?shapes[sel]:null;
+    const st={id:++uid,kind:'brush',brush:brushTool,size:brushSize,cx:0,cy:0,w:0,h:0,
+      ink:inkIx,fill:'solid',knock:false,seed:Math.random()*1e9|0,pts:[[px,py]],
+      clipped:!!host,clipId:host?host.id:null};
+    shapes.push(st); drag={mode:'brush',si:shapes.length-1,host:sel};
+    render(); return; }
+  if(tool){ drag={mode:'create',x0:snap8(px),y0:snap8(py)};
+    pushHistory();
+    const s={id:++uid,kind:tool,cx:snap8(px),cy:snap8(py),w:8,h:8,ink:inkIx,fill:fillMode,knock:false,seed:Math.random()*1e9|0};
+    shapes.push(s); sel=shapes.length-1;
+    if(jmode){shapes.push({...s,id:++uid,cx:W-s.cx}); drag.mirror=shapes.length-1;}
+    render(); return; }
+  // select: topmost hit
+  for(let i=shapes.length-1;i>=0;i--){const s=shapes[i];
+    if(Math.abs(px-s.cx)<=s.w/2+6&&Math.abs(py-s.cy)<=s.h/2+6){
+      sel=i; drag={mode:'move',dx:px-s.cx,dy:py-s.cy,moved:false}; render(); return;}}
+  sel=-1; render();
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return; const {px,py}=evPos(e);
+  if(drag.mode==='brush'){
+    const st=shapes[drag.si], last=st.pts[st.pts.length-1];
+    if((px-last[0])**2+(py-last[1])**2>16) st.pts.push([px,py]);
+    render(); return;
+  }
+  if(drag.mode==='create'){
+    const s=shapes[drag.mirror!==undefined?shapes.length-2:shapes.length-1];
+    s.w=Math.max(8,snap8(Math.abs(px-drag.x0)*2)); s.h=Math.max(8,snap8(Math.abs(py-drag.y0)*2));
+    if(e.shiftKey)s.h=s.w;
+    if(drag.mirror!==undefined){const m=shapes[drag.mirror]; m.w=s.w; m.h=s.h;}
+  } else {
+    const s=shapes[sel]; if(!s)return;
+    if(!drag.moved){pushHistory(); drag.moved=true;}
+    s.cx=snap8(px-drag.dx); s.cy=snap8(py-drag.dy);
+    // magnetic conform: edges & centers pull toward neighbors and the canvas axis
+    drag.guides=[]; const TH=10;
+    const xt=[{o:0,c:[W/2]}]; const yt=[{o:0,c:[H/2]}];
+    shapes.forEach((t,i)=>{ if(i===sel)return;
+      xt.push({o:0,c:[t.cx]},{o:0,c:[t.cx-t.w/2,t.cx+t.w/2]});
+      yt.push({o:0,c:[t.cy]},{o:0,c:[t.cy-t.h/2,t.cy+t.h/2]}); });
+    const myX=[{off:0},{off:-s.w/2},{off:s.w/2}], myY=[{off:0},{off:-s.h/2},{off:s.h/2}];
+    let bx=null,bd=TH;
+    for(const g of xt)for(const c of g.c)for(const m of myX){
+      const d=Math.abs((s.cx+m.off)-c); if(d<bd){bd=d;bx={c,m};}}
+    if(bx){s.cx=bx.c-bx.m.off; drag.guides.push({v:bx.c});}
+    let by=null; bd=TH;
+    for(const g of yt)for(const c of g.c)for(const m of myY){
+      const d=Math.abs((s.cy+m.off)-c); if(d<bd){bd=d;by={c,m};}}
+    if(by){s.cy=by.c-by.m.off; drag.guides.push({h:by.c});}
+    if(jmode){ // drag the twin too if one exists at mirrored x with same kind/size
+      const tw=shapes.find((t,i)=>i!==sel&&t.kind===s.kind&&t.w===s.w&&t.h===s.h&&Math.abs((W-t.cx)-s.cx)<64);
+      if(tw){tw.cx=W-s.cx; tw.cy=s.cy;}
+    }
+  }
+  render();
+});
+cv.addEventListener('pointerup',()=>{
+  if(drag&&drag.mode==='brush'){
+    const st=shapes[drag.si];
+    // normalize: recenter pts on bbox so the stroke moves/selects like any shape
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    for(const p of st.pts){x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);}
+    st.cx=(x0+x1)/2; st.cy=(y0+y1)/2; st.w=x1-x0+st.size*2; st.h=y1-y0+st.size*2;
+    st.pts=st.pts.map(p=>[p[0]-st.cx,p[1]-st.cy]);
+    if(drag.host>=0)sel=drag.host; // keep the host selected so you can keep brushing it
+    say(st.clipped?'stroke masked inside the shape — brush again or hit ✕ OFF':'stroke placed free');
+  }
+  else if(drag&&drag.mode==='create'){tool=null; syncToolButtons(); say('placed. drag to move · knock to cut · clip to conform');}
+  drag=null; render();
+});
+window.addEventListener('keydown',e=>{
+  if(e.key==='Backspace'||e.key==='Delete'){ if(sel>=0){pushHistory(); shapes.splice(sel,1); sel=-1; render(); say('deleted');} }
+  if((e.metaKey||e.ctrlKey)&&e.key==='z'){e.preventDefault(); document.getElementById('undo').click();}
+});
+
+// ---------- starter composition so the canvas isn't blank ----------
+shapes=[
+  {kind:'arc',cx:370,cy:430,w:560,h:520,ink:3,fill:'halftone',knock:false},
+  {kind:'comb',cx:370,cy:410,w:600,h:300,ink:1,fill:'solid',knock:false},
+  {kind:'eye',cx:370,cy:400,w:260,h:90,ink:1,fill:'solid',knock:false},
+  {kind:'circle',cx:370,cy:400,w:60,h:60,ink:2,fill:'solid',knock:false},
+  {kind:'tri',cx:370,cy:760,w:420,h:360,ink:1,fill:'hatch',knock:false},
+  {kind:'comb',cx:370,cy:820,w:360,h:220,ink:4,fill:'solid',knock:false,clipped:true},
+  {kind:'moon',cx:120,cy:150,w:120,h:120,ink:4,fill:'solid',knock:false},
+];
+shapes.forEach(s=>{s.id=++uid; s.seed=(Math.random()*1e9|0);});
+shapes[5].clipId=shapes[4].id;
+document.getElementById('grain').classList.add('active');
+buildPalettes(); buildChips(); syncToolButtons(); render();
+say('ready. pick a shape, drag on canvas. shift = square.');
+</script>
