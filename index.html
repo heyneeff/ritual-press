@@ -187,6 +187,11 @@
       <hr style="margin:8px 0">
       <button id="grain" style="width:100%">▒ PAPER GRAIN ON EXPORT</button>
     </div>
+    <div><p class="plabel">PLATES — SCANNED INK</p>
+      <div class="chips" id="plates"></div>
+      <button id="plateimport" style="width:100%;margin-top:5px">⊕ IMPORT SCAN</button>
+      <p style="font-size:9px;color:var(--readout-dim);line-height:1.6;margin:6px 0 0">DROP AN IMAGE ANYWHERE. ITS DARKNESS BECOMES INK — RE-COLORED BY THE PALETTE, MASKED THROUGH ANY SHAPE.</p>
+    </div>
     <div><p class="plabel">BRUSHES — MASK FIRST</p>
       <div class="grid2">
         <button data-brush="stipple">⁖ STIPPLE</button>
@@ -438,6 +443,10 @@ function paint(s,ghost,below){
           i+=len+gap; }
       }
       x.globalAlpha=ghost?.4:1;
+    } else if(s.fill==='plate'){
+      const p=plateById(s.plateId);
+      if(p){ x.fillStyle=x.createPattern(inkedPlate(p,ink),'repeat');
+        x.fillRect(-s.w/2,-s.h/2,s.w,s.h); }
     } else if(s.fill==='aquatint'){
       // goya's darkness: dense etched speck with breathing voids
       const g=mulberry32((s.seed||7)^0xA9);
@@ -606,6 +615,7 @@ function syncToolButtons(){
   document.querySelectorAll('[data-brush]').forEach(b=>b.classList.toggle('active',b.dataset.brush===brushTool));
   document.querySelectorAll('[data-bsize]').forEach(b=>b.classList.toggle('active',+b.dataset.bsize===brushSize));
   document.querySelectorAll('[data-finish]').forEach(b=>b.classList.toggle('active',b.dataset.finish===finishMode));
+  buildPlates();
 }
 
 // pathfinder
@@ -673,13 +683,71 @@ document.getElementById('export').onclick=()=>{
   say('exported 2x png');
 };
 
+// ---------- plates : imported scans as re-inkable texture fills ----------
+let plates=[], curPlateId=null, inkCache={};
+const plateById=id=>plates.find(p=>p.id===id);
+function makeMask(img){ // luminance → alpha: dark pixels become ink
+  const sc=Math.min(1,512/Math.max(img.width,img.height));
+  const c=document.createElement('canvas'); c.width=Math.max(1,img.width*sc|0); c.height=Math.max(1,img.height*sc|0);
+  const g=c.getContext('2d'); g.drawImage(img,0,0,c.width,c.height);
+  const im=g.getImageData(0,0,c.width,c.height), d=im.data;
+  for(let i=0;i<d.length;i+=4){ const l=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];
+    d[i]=d[i+1]=d[i+2]=255; d[i+3]=(d[i+3]/255)*(255-l); }
+  g.putImageData(im,0,0); return c;
+}
+function inkedPlate(p,color){
+  const k=p.id+'·'+color; if(inkCache[k])return inkCache[k];
+  const c=document.createElement('canvas'); c.width=p.mask.width; c.height=p.mask.height;
+  const g=c.getContext('2d'); g.fillStyle=color; g.fillRect(0,0,c.width,c.height);
+  g.globalCompositeOperation='destination-in'; g.drawImage(p.mask,0,0);
+  return inkCache[k]=c;
+}
+function importPlateFile(f){
+  if(!f||!/^image\//.test(f.type))return say('drop an image file');
+  const img=new Image();
+  img.onload=()=>{
+    const mask=makeMask(img);
+    const p={id:'p'+(++uid),name:f.name.replace(/\.[^.]+$/,'').slice(0,16),mask,data:mask.toDataURL()};
+    plates.push(p); curPlateId=p.id; URL.revokeObjectURL(img.src);
+    if(sel>=0){pushHistory(); shapes[sel].fill='plate'; shapes[sel].plateId=p.id;}
+    fillMode='plate'; syncToolButtons(); buildPlates(); render();
+    say('plate "'+p.name+'" ready — '+(sel>=0?'inked onto selection':'new shapes ink through it'));
+  };
+  img.src=URL.createObjectURL(f);
+}
+function buildPlates(){
+  const el=document.getElementById('plates'); el.innerHTML='';
+  plates.forEach(p=>{
+    const b=document.createElement('button'); b.className='chip'+(p.id===curPlateId&&fillMode==='plate'?' sel':'');
+    b.style.backgroundImage='url('+inkedPlate(p,'#16130E').toDataURL()+')';
+    b.style.backgroundSize='cover'; b.title=p.name;
+    b.onclick=()=>{ curPlateId=p.id; fillMode='plate'; syncToolButtons(); buildPlates();
+      if(sel>=0){pushHistory(); shapes[sel].fill='plate'; shapes[sel].plateId=p.id; render();}
+      say('plate '+p.name+(sel>=0?' — inked onto selection':' — draw a shape to print through it')); };
+    el.appendChild(b);
+  });
+}
+document.getElementById('plateimport').onclick=()=>{
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.multiple=true;
+  inp.onchange=()=>[...inp.files].forEach(importPlateFile); inp.click(); };
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('drop',e=>{e.preventDefault(); [...(e.dataTransfer.files||[])].forEach(importPlateFile);});
+
 // ---------- save / load : .ritual files + autosave ----------
-function docJSON(){return JSON.stringify({app:'ritual-press',v:1,palIx,inkIx,jmode,grainOn,uid,shapes});}
+function docJSON(){return JSON.stringify({app:'ritual-press',v:1,palIx,inkIx,jmode,grainOn,uid,shapes,
+  plates:plates.map(p=>({id:p.id,name:p.name,data:p.data}))});}
 function loadDoc(d){
   if(!d||d.app!=='ritual-press'||!Array.isArray(d.shapes)) throw new Error('not a ritual file');
   shapes=d.shapes; palIx=d.palIx||0; inkIx=d.inkIx??1; jmode=!!d.jmode; grainOn=d.grainOn!==false;
   uid=Math.max(d.uid||0,...shapes.map(s=>s.id||0));
   sel=-1; history=[]; tool=null; brushTool=null;
+  plates=[]; inkCache={}; curPlateId=null;
+  (d.plates||[]).forEach(q=>{ const img=new Image();
+    img.onload=()=>{ const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
+      c.getContext('2d').drawImage(img,0,0);
+      plates.push({id:q.id,name:q.name,mask:c,data:q.data}); buildPlates(); render(); };
+    img.src=q.data; });
+  buildPlates();
   document.getElementById('jmode').classList.toggle('active',jmode);
   document.getElementById('grain').classList.toggle('active',grainOn);
   buildPalettes(); buildChips(); syncToolButtons(); render();
@@ -732,6 +800,7 @@ cv.addEventListener('pointerdown',e=>{
   if(tool){ drag={mode:'create',x0:snap8(px),y0:snap8(py)};
     pushHistory();
     const s={id:++uid,kind:tool,cx:snap8(px),cy:snap8(py),w:8,h:8,ink:inkIx,fill:fillMode,knock:false,rough:finishMode==='rough',seed:Math.random()*1e9|0};
+    if(fillMode==='plate')s.plateId=curPlateId;
     shapes.push(s); sel=shapes.length-1;
     if(jmode){shapes.push({...s,id:++uid,cx:W-s.cx}); drag.mirror=shapes.length-1;}
     render(); return; }
