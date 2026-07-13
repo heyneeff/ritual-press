@@ -124,6 +124,8 @@
   <button id="zoomin">+</button>
   <button id="jmode" title="J MODE: symmetry liturgy — placements mirror across the axis, registers lock in">◈ J MODE</button>
   <button id="undo">⟲ UNDO</button>
+  <button id="save" title="save composition as a .ritual file">⬒ SAVE</button>
+  <button id="load" title="load a .ritual file">⬓ LOAD</button>
   <button id="export">⇩ PNG</button>
 </div>
 
@@ -488,6 +490,7 @@ function render(){
     }
   }
   renderLayers();
+  autosave();
 }
 function renderLayers(){
   const el=document.getElementById('layers'); el.innerHTML='';
@@ -670,6 +673,35 @@ document.getElementById('export').onclick=()=>{
   say('exported 2x png');
 };
 
+// ---------- save / load : .ritual files + autosave ----------
+function docJSON(){return JSON.stringify({app:'ritual-press',v:1,palIx,inkIx,jmode,grainOn,uid,shapes});}
+function loadDoc(d){
+  if(!d||d.app!=='ritual-press'||!Array.isArray(d.shapes)) throw new Error('not a ritual file');
+  shapes=d.shapes; palIx=d.palIx||0; inkIx=d.inkIx??1; jmode=!!d.jmode; grainOn=d.grainOn!==false;
+  uid=Math.max(d.uid||0,...shapes.map(s=>s.id||0));
+  sel=-1; history=[]; tool=null; brushTool=null;
+  document.getElementById('jmode').classList.toggle('active',jmode);
+  document.getElementById('grain').classList.toggle('active',grainOn);
+  buildPalettes(); buildChips(); syncToolButtons(); render();
+}
+document.getElementById('save').onclick=()=>{
+  const a=document.createElement('a');
+  a.download='ritual-'+new Date().toISOString().slice(0,10)+'.ritual';
+  a.href=URL.createObjectURL(new Blob([docJSON()],{type:'application/json'}));
+  a.click(); URL.revokeObjectURL(a.href);
+  say('saved .ritual — the composition survives');
+};
+document.getElementById('load').onclick=()=>{
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.ritual,application/json';
+  inp.onchange=()=>{ const f=inp.files[0]; if(!f)return;
+    f.text().then(t=>{ loadDoc(JSON.parse(t)); say('loaded '+f.name); })
+      .catch(()=>say('could not read that file — is it a .ritual?')); };
+  inp.click();
+};
+let autoT=null;
+function autosave(){ clearTimeout(autoT);
+  autoT=setTimeout(()=>{try{localStorage.setItem('ritual-press-autosave',docJSON());}catch(e){}},400); }
+
 // ---------- canvas interaction ----------
 function evPos(e){const r=cv.getBoundingClientRect();
   return {px:(e.clientX-r.left)*W/r.width, py:(e.clientY-r.top)*H/r.height};}
@@ -772,7 +804,12 @@ window.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key==='z'){e.preventDefault(); document.getElementById('undo').click();}
 });
 
-// ---------- starter composition so the canvas isn't blank ----------
+// ---------- startup: restore the last session, else the starter composition ----------
+let restored=false;
+try{ const as=localStorage.getItem('ritual-press-autosave');
+  if(as){ loadDoc(JSON.parse(as)); restored=true; } }catch(e){}
+if(restored){ say('session restored — SAVE writes a .ritual file you can keep'); }
+else{
 shapes=[
   {kind:'arc',cx:370,cy:430,w:560,h:520,ink:3,fill:'halftone',knock:false},
   {kind:'comb',cx:370,cy:410,w:600,h:300,ink:1,fill:'solid',knock:false},
@@ -792,4 +829,5 @@ shapes.push(pA,pB,{id:++uid,kind:'blend',aId:pA.id,bId:pB.id,n:26,cx:(pA.cx+pB.c
 document.getElementById('grain').classList.add('active');
 buildPalettes(); buildChips(); syncToolButtons(); render();
 say('ready. pick a shape, drag on canvas. shift = square.');
+}
 </script>
