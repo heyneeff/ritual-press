@@ -87,6 +87,20 @@
         <button data-shape="drop">▼ DROP</button>
       </div>
     </div>
+    <div><p class="plabel">PATHS &amp; BLENDS</p>
+      <div class="grid2">
+        <button id="pathtool">✎ PATH</button>
+        <button id="pathend">✓ END</button>
+        <button data-pmode="line">⟋ LINE</button>
+        <button data-pmode="zig">⚡ ZIG</button>
+        <button data-pmode="wave">〜 WAVE</button>
+        <button id="blend">✦ BLEND</button>
+      </div>
+      <div class="grid3" style="margin-top:5px">
+        <button id="ampdn">AMP −</button><button id="ampup">AMP +</button><button id="lw">LINE WT</button>
+      </div>
+      <p style="font-size:9px;color:var(--readout-dim);line-height:1.6;margin:6px 0 0">CLICK TO LAY POINTS, END TO FINISH. DRAG POINTS ANY TIME. BLEND WEAVES A VEIL BETWEEN THE TWO NEWEST PATHS.</p>
+    </div>
     <div><p class="plabel">PATHFINDER</p>
       <div class="grid2">
         <button id="op-knock">⊘ KNOCK</button>
@@ -172,6 +186,50 @@ let tool=null, fillMode='solid', brushTool=null, brushSize=16;
 const snap8=v=>Math.round(v/8)*8;
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const hostOf=s=>s.clipId!=null?shapes.find(t=>t.id===s.clipId):null;
+
+// ---------- path machinery ----------
+// world-space polyline of a path, with zig/wave applied
+function renderPts(s){
+  const abs=s.pts.map(p=>[p[0]+s.cx,p[1]+s.cy]);
+  if(s.mode!=='zig'&&s.mode!=='wave') return abs;
+  const out=[], amp=s.amp||14, wl=Math.max(18,amp*2.6);
+  let dist=0;
+  for(let i=0;i<abs.length-1;i++){
+    const [x0,y0]=abs[i],[x1,y1]=abs[i+1];
+    const len=Math.hypot(x1-x0,y1-y0)||1, nx=-(y1-y0)/len, ny=(x1-x0)/len;
+    const steps=Math.max(2,Math.ceil(len/4));
+    for(let k=0;k<steps;k++){
+      const t=k/steps, d=dist+len*t, ph=d/wl*Math.PI*2;
+      const off=s.mode==='wave'?Math.sin(ph)*amp
+        :(2*Math.abs(((d/wl)%1)-.5)-.5)*2*amp; // triangle wave
+      out.push([x0+(x1-x0)*t+nx*off, y0+(y1-y0)*t+ny*off]);
+    }
+    dist+=len;
+  }
+  out.push(abs[abs.length-1]);
+  return out;
+}
+// uniform arc-length resample to M points (for blending unequal paths)
+function resample(pts,M){
+  const cum=[0];
+  for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  const total=cum[cum.length-1]||1, out=[];
+  let j=0;
+  for(let i=0;i<M;i++){
+    const d=total*i/(M-1);
+    while(j<pts.length-2&&cum[j+1]<d)j++;
+    const seg=cum[j+1]-cum[j]||1, t=(d-cum[j])/seg;
+    out.push([pts[j][0]+(pts[j+1][0]-pts[j][0])*t, pts[j][1]+(pts[j+1][1]-pts[j][1])*t]);
+  }
+  return out;
+}
+function lerpHex(a,b,t){
+  const pa=parseInt(a.slice(1),16), pb=parseInt(b.slice(1),16);
+  const r=((pa>>16)+(((pb>>16)-(pa>>16))*t))|0,
+        g=(((pa>>8)&255)+((((pb>>8)&255)-((pa>>8)&255))*t))|0,
+        bl=((pa&255)+(((pb&255)-(pa&255))*t))|0;
+  return `rgb(${r},${g},${bl})`;
+}
 function pushHistory(){history.push(JSON.stringify(shapes)); if(history.length>60)history.shift();}
 
 // ---------- shape rendering ----------
@@ -199,17 +257,57 @@ function paint(s,ghost,below){
   } else x.translate(s.cx,s.cy);
   x.globalCompositeOperation = s.knock&&!ghost ? 'destination-out':'source-over';
 
+  if(s.kind==='path'){
+    x.restore(); x.save(); // paths & clips both live in world space
+    if(s.clipped&&below&&below.kind!=='comb'&&below.kind!=='brush'&&below.kind!=='path'&&below.kind!=='blend'){
+      x.translate(below.cx,below.cy); tracePath(below); x.clip(); x.translate(-below.cx,-below.cy);}
+    x.globalAlpha=ghost?.4:1;
+    x.globalCompositeOperation=s.knock&&!ghost?'destination-out':'source-over';
+    const pts=renderPts(s);
+    x.strokeStyle=ink; x.lineWidth=s.lw||4; x.lineJoin='round'; x.lineCap='round';
+    x.beginPath(); pts.forEach((p,i)=>x[i?'lineTo':'moveTo'](p[0],p[1])); x.stroke();
+    x.restore(); return;
+  }
+  if(s.kind==='blend'){
+    x.restore(); x.save();
+    const A=shapes.find(t=>t.id===s.aId), B=shapes.find(t=>t.id===s.bId);
+    if(!A||!B){x.restore();return;}
+    x.globalAlpha=(ghost?.4:1)*.9;
+    const M=72, pa=resample(renderPts(A),M), pb=resample(renderPts(B),M);
+    const ca=PALETTES[palIx].inks[A.ink], cb=PALETTES[palIx].inks[B.ink];
+    const n=s.n||24;
+    x.lineJoin='round'; x.lineCap='round';
+    for(let i=1;i<n-1;i++){
+      const t=i/(n-1);
+      x.strokeStyle=lerpHex(ca,cb,t);
+      x.lineWidth=Math.max(1,(A.lw||4)*(1-t)+(B.lw||4)*t)*.5;
+      x.beginPath();
+      for(let k=0;k<M;k++){
+        const px=pa[k][0]+(pb[k][0]-pa[k][0])*t, py=pa[k][1]+(pb[k][1]-pa[k][1])*t;
+        x[k?'lineTo':'moveTo'](px,py);
+      }
+      x.stroke();
+    }
+    x.restore(); return;
+  }
   if(s.kind==='brush'){
-    const g=mulberry32(s.seed||3);
+    const g=mulberry32(s.seed||3), base=ghost?.4:1;
     x.fillStyle=ink;
-    for(const p of s.pts){
-      const dabs=s.brush==='grit'?16:s.brush==='dry'?5:9;
+    for(let pi=0;pi<s.pts.length;pi++){
+      const p=s.pts[pi], q=s.pts[pi>0?pi-1:pi];
+      const ang=Math.atan2(p[1]-q[1],p[0]-q[0]);
+      const dabs=s.brush==='grit'?16:s.brush==='dry'?6:10;
       for(let i=0;i<dabs;i++){
-        const a=g()*7, r=Math.sqrt(g())*s.size;
+        // gaussian-ish falloff: dense core, ragged edge
+        const a=g()*7, r=g()*g()*s.size;
         const dx=p[0]+Math.cos(a)*r, dy=p[1]+Math.sin(a)*r;
-        if(s.brush==='grit') x.fillRect(dx,dy,1.4,1.4);
-        else if(s.brush==='dry'){x.globalAlpha=(ghost?.4:1)*(.35+g()*.5);x.fillRect(dx,dy,4+g()*14,1.6);}
-        else {x.beginPath();x.arc(dx,dy,.7+g()*1.5,0,7);x.fill();}
+        if(s.brush==='grit'){x.globalAlpha=base*(.5+g()*.5);
+          x.fillRect(dx,dy,.9+g()*1.3,.9+g()*1.3);}
+        else if(s.brush==='dry'){ // streaks follow the hand's direction
+          x.save();x.translate(dx,dy);x.rotate(ang+(g()-.5)*.35);
+          x.globalAlpha=base*(.22+g()*.55);x.fillRect(0,-.8,5+g()*16,1.1+g()*1.5);x.restore();}
+        else {x.globalAlpha=base*(.65+g()*.35);
+          x.beginPath();x.arc(dx,dy,.6+g()*g()*2,0,7);x.fill();}
       }
     }
     x.restore(); return;
@@ -245,13 +343,13 @@ function paint(s,ghost,below){
         x.beginPath();x.arc(0,s.h/2,r,Math.PI,0);x.stroke();}
     } else if(s.fill==='hatch'){
       x.lineWidth=3;
-      for(let i=-s.w;i<s.w;i+=12){x.beginPath();x.moveTo(i,-s.h/2);x.lineTo(i+s.h/2,s.h/2);x.stroke();}
+      for(let i=-s.w/2-s.h;i<s.w/2;i+=12){x.beginPath();x.moveTo(i,-s.h/2);x.lineTo(i+s.h,s.h/2);x.stroke();}
     } else if(s.fill==='stipple'){
       // mezzotint-style: dot density carries the tone, darker toward the base
       const g=mulberry32(s.seed||7), n=(s.w*s.h)/26;
       for(let i=0;i<n;i++){
         const px=(g()-.5)*s.w, py=(g()-.5)*s.h, t=(py+s.h/2)/s.h;
-        if(g()<t*.92+.06){x.beginPath();x.arc(px,py,.9+g()*1.7,0,7);x.fill();}
+        if(g()<t*.92+.06){x.beginPath();x.arc(px,py,.6+g()*g()*2.3,0,7);x.fill();}
       }
     } else if(s.fill==='riso'){
       // risograph grain: uniform fine speck, the True Grit staple
@@ -312,6 +410,11 @@ function render(){
     const s=shapes[sel];
     x.save(); x.strokeStyle='#7fd18a'; x.lineWidth=1.5; x.setLineDash([5,4]);
     x.strokeRect(s.cx-s.w/2-4,s.cy-s.h/2-4,s.w+8,s.h+8); x.restore();
+    if(s.kind==='path'){ // draggable node handles
+      x.save(); x.fillStyle='#7fd18a'; x.strokeStyle='#16130E'; x.lineWidth=1.5;
+      for(const p of s.pts){ x.beginPath(); x.rect(p[0]+s.cx-5,p[1]+s.cy-5,10,10); x.fill(); x.stroke(); }
+      x.restore();
+    }
   }
   renderLayers();
 }
@@ -320,7 +423,7 @@ function renderLayers(){
   shapes.forEach((s,i)=>{
     const d=document.createElement('div'); d.className='lay'+(i===sel?' sel':'');
     d.innerHTML=`<span class="sw" style="background:${PALETTES[palIx].inks[s.ink]}"></span>
-      <span class="nm">${s.kind==='brush'?('BRUSH·'+s.brush):s.kind.toUpperCase()+(s.fill!=='solid'?'·'+s.fill:'')}</span>
+      <span class="nm">${s.kind==='brush'?('BRUSH·'+s.brush):s.kind==='path'?('PATH·'+(s.mode||'line')):s.kind==='blend'?'BLEND✦':s.kind.toUpperCase()+(s.fill!=='solid'?'·'+s.fill:'')}</span>
       ${s.knock?'<span class="ko">KNOCK</span>':''}${s.clipped?'<span class="ko" style="color:#7fd18a">CLIP</span>':''}`;
     d.onclick=()=>{sel=i; tool=null; syncToolButtons(); render();};
     el.appendChild(d);
@@ -363,6 +466,55 @@ document.querySelectorAll('[data-brush]').forEach(b=>b.onclick=()=>{
 document.querySelectorAll('[data-bsize]').forEach(b=>b.onclick=()=>{
   brushSize=+b.dataset.bsize; syncToolButtons(); say('brush size '+brushSize);
 });
+
+// ---------- paths & blends ----------
+let pathing=false, curPath=-1;
+function endPath(){
+  if(!pathing)return; pathing=false;
+  document.getElementById('pathtool').classList.remove('active');
+  if(curPath>=0&&shapes[curPath]&&shapes[curPath].pts.length<2){shapes.splice(curPath,1); sel=-1;}
+  else if(curPath>=0){normalizePath(shapes[curPath]); sel=curPath;}
+  curPath=-1; render(); say('path closed — drag its points any time · zig/wave to bend · blend to weave');
+}
+function normalizePath(s){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  const abs=s.pts.map(p=>[p[0]+s.cx,p[1]+s.cy]);
+  for(const p of abs){x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);}
+  s.cx=(x0+x1)/2; s.cy=(y0+y1)/2;
+  s.w=Math.max(24,x1-x0+(s.amp||14)*2); s.h=Math.max(24,y1-y0+(s.amp||14)*2);
+  s.pts=abs.map(p=>[p[0]-s.cx,p[1]-s.cy]);
+}
+document.getElementById('pathtool').onclick=e=>{
+  if(pathing){endPath();return;}
+  pathing=true; tool=null; brushTool=null; curPath=-1; syncToolButtons();
+  e.currentTarget.classList.add('active');
+  say('click on canvas to lay points · ✓ end (or double-click) to finish');
+};
+document.getElementById('pathend').onclick=endPath;
+cv.addEventListener('dblclick',endPath);
+document.querySelectorAll('[data-pmode]').forEach(b=>b.onclick=()=>{
+  if(sel<0||shapes[sel].kind!=='path')return say('select a path first');
+  pushHistory(); shapes[sel].mode=b.dataset.pmode; normalizePath(shapes[sel]); render();
+  say('path mode: '+b.dataset.pmode);
+});
+document.getElementById('ampdn').onclick=()=>{ if(sel<0||shapes[sel].kind!=='path')return say('select a path first');
+  pushHistory(); shapes[sel].amp=Math.max(4,(shapes[sel].amp||14)-5); render(); say('amp '+shapes[sel].amp); };
+document.getElementById('ampup').onclick=()=>{ if(sel<0||shapes[sel].kind!=='path')return say('select a path first');
+  pushHistory(); shapes[sel].amp=Math.min(80,(shapes[sel].amp||14)+5); render(); say('amp '+shapes[sel].amp); };
+document.getElementById('lw').onclick=()=>{ if(sel<0||shapes[sel].kind!=='path')return say('select a path first');
+  pushHistory(); const s=shapes[sel]; s.lw=({2:4,4:7,7:12,12:2})[s.lw||4]||4; render(); say('line weight '+s.lw); };
+document.getElementById('blend').onclick=()=>{
+  const paths=shapes.map((s,i)=>({s,i})).filter(o=>o.s.kind==='path');
+  if(paths.length<2)return say('need two paths — lay them with ✎ path');
+  let a,b;
+  if(sel>=0&&shapes[sel].kind==='path'){ b=shapes[sel];
+    const others=paths.filter(o=>o.i!==sel); a=others[others.length-1].s; }
+  else { b=paths[paths.length-1].s; a=paths[paths.length-2].s; }
+  pushHistory();
+  shapes.push({id:++uid,kind:'blend',aId:a.id,bId:b.id,n:26,cx:(a.cx+b.cx)/2,cy:(a.cy+b.cy)/2,w:0,h:0,ink:a.ink,fill:'solid',knock:false});
+  sel=shapes.length-1; render();
+  say('veil woven between the two paths — move either path and it follows');
+};
 document.querySelectorAll('[data-fill]').forEach(b=>b.onclick=()=>{
   fillMode=b.dataset.fill; syncToolButtons();
   if(sel>=0){pushHistory(); shapes[sel].fill=fillMode; render();}
@@ -431,6 +583,20 @@ function evPos(e){const r=cv.getBoundingClientRect();
 let drag=null;
 cv.addEventListener('pointerdown',e=>{
   const {px,py}=evPos(e); cv.setPointerCapture(e.pointerId);
+  if(pathing){ // lay a point
+    if(curPath<0){ pushHistory();
+      shapes.push({id:++uid,kind:'path',mode:'line',amp:14,lw:4,cx:0,cy:0,w:0,h:0,
+        ink:inkIx,fill:'solid',knock:false,seed:Math.random()*1e9|0,pts:[[px,py]]});
+      curPath=shapes.length-1; sel=curPath; }
+    else shapes[curPath].pts.push([px,py]);
+    render(); return; }
+  if(sel>=0&&shapes[sel].kind==='path'){ // grab a node?
+    const s=shapes[sel];
+    for(let i=0;i<s.pts.length;i++){
+      const hx=s.pts[i][0]+s.cx, hy=s.pts[i][1]+s.cy;
+      if((px-hx)**2+(py-hy)**2<144){ pushHistory();
+        drag={mode:'node',ni:i}; return; } }
+  }
   if(brushTool){ pushHistory();
     const host=sel>=0?shapes[sel]:null;
     const st={id:++uid,kind:'brush',brush:brushTool,size:brushSize,cx:0,cy:0,w:0,h:0,
@@ -452,6 +618,11 @@ cv.addEventListener('pointerdown',e=>{
 });
 cv.addEventListener('pointermove',e=>{
   if(!drag)return; const {px,py}=evPos(e);
+  if(drag.mode==='node'){
+    const s=shapes[sel]; if(!s)return;
+    s.pts[drag.ni]=[px-s.cx,py-s.cy];
+    render(); return;
+  }
   if(drag.mode==='brush'){
     const st=shapes[drag.si], last=st.pts[st.pts.length-1];
     if((px-last[0])**2+(py-last[1])**2>16) st.pts.push([px,py]);
@@ -489,6 +660,7 @@ cv.addEventListener('pointermove',e=>{
   render();
 });
 cv.addEventListener('pointerup',()=>{
+  if(drag&&drag.mode==='node'){ normalizePath(shapes[sel]); drag=null; render(); return; }
   if(drag&&drag.mode==='brush'){
     const st=shapes[drag.si];
     // normalize: recenter pts on bbox so the stroke moves/selects like any shape
@@ -519,6 +691,11 @@ shapes=[
 ];
 shapes.forEach(s=>{s.id=++uid; s.seed=(Math.random()*1e9|0);});
 shapes[5].clipId=shapes[4].id;
+// starter veil: two wave paths + a blend between them (drag their points!)
+const pA={id:++uid,kind:'path',mode:'wave',amp:16,lw:3,cx:0,cy:0,w:0,h:0,ink:4,fill:'solid',knock:false,seed:1,pts:[[150,180],[170,420],[140,640]]};
+const pB={id:++uid,kind:'path',mode:'wave',amp:24,lw:3,cx:0,cy:0,w:0,h:0,ink:3,fill:'solid',knock:false,seed:2,pts:[[300,200],[260,430],[310,660]]};
+normalizePath(pA); normalizePath(pB);
+shapes.push(pA,pB,{id:++uid,kind:'blend',aId:pA.id,bId:pB.id,n:26,cx:(pA.cx+pB.cx)/2,cy:(pA.cy+pB.cy)/2,w:0,h:0,ink:4,fill:'solid',knock:false});
 document.getElementById('grain').classList.add('active');
 buildPalettes(); buildChips(); syncToolButtons(); render();
 say('ready. pick a shape, drag on canvas. shift = square.');
