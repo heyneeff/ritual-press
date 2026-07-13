@@ -14,8 +14,11 @@
   /* ---------- top bar ---------- */
   #topbar{
     display:flex; align-items:center; gap:16px; padding:0 16px;
-    background:linear-gradient(180deg,var(--plastic3),var(--plastic2));
-    border-bottom:2px solid var(--bezel);
+    background:
+      repeating-linear-gradient(90deg, transparent 0 34px, rgba(0,0,0,.16) 34px 36px),
+      linear-gradient(180deg,#3f3522,var(--plastic3) 30%,var(--plastic2));
+    border-bottom:2px solid #0d0a07;
+    box-shadow:0 2px 0 rgba(255,244,210,.06), 0 4px 10px rgba(0,0,0,.4);
   }
   #topbar h1{font-size:12px; letter-spacing:.4em; margin:0; font-weight:600}
   #topbar .lamp{width:9px;height:9px;border-radius:50%;background:var(--crt);box-shadow:0 0 8px var(--crt)}
@@ -23,30 +26,69 @@
   #jmode.on{background:var(--alert);color:#1d1812;box-shadow:0 0 14px var(--alert)}
   /* ---------- main ---------- */
   #main{display:grid; grid-template-columns:190px 1fr 210px; min-height:0}
-  .panel{background:var(--plastic2); border-right:2px solid var(--bezel); padding:10px; overflow-y:auto; display:flex; flex-direction:column; gap:14px}
+  .panel{
+    background:
+      repeating-linear-gradient(0deg, transparent 0 7px, rgba(0,0,0,.14) 7px 8px),
+      linear-gradient(180deg,#2e2619,var(--plastic2));
+    border-right:2px solid var(--bezel); padding:10px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:14px;
+    box-shadow:inset 1px 0 0 rgba(255,255,255,.05), inset -2px 0 6px rgba(0,0,0,.35);
+  }
   .panel:last-child{border-right:none; border-left:2px solid var(--bezel)}
-  .plabel{font-size:9px; letter-spacing:.3em; color:var(--readout-dim); margin:0 0 6px}
-  /* buttons */
+  /* label-maker tape headers */
+  .plabel{
+    font-size:9px; letter-spacing:.32em; color:#efe6cf; margin:0 0 8px;
+    background:linear-gradient(180deg,#111,#000 55%,#191919);
+    display:inline-block; padding:4px 8px 3px; border-radius:2px;
+    box-shadow:0 1px 0 rgba(255,255,255,.08), inset 0 -1px 0 rgba(0,0,0,.8);
+    text-shadow:0 1px 0 #000;
+  }
+  /* molded plastic keys */
   button{
     font:inherit; font-size:10px; letter-spacing:.12em; color:var(--readout);
-    background:linear-gradient(180deg,var(--plastic3),var(--plastic2));
-    border:1px solid var(--bezel); border-radius:3px; padding:7px 8px; cursor:pointer; text-align:left;
+    background:linear-gradient(180deg,#453a26 0%,var(--plastic3) 18%,var(--plastic2) 85%,#171310 100%);
+    border:1px solid #0d0a07; border-radius:4px; padding:8px 8px 9px; cursor:pointer; text-align:left;
+    box-shadow:
+      inset 0 1px 0 rgba(255,244,210,.22),
+      inset 0 -2px 0 rgba(0,0,0,.55),
+      inset 1px 0 0 rgba(255,244,210,.06),
+      0 2px 0 #0b0805, 0 3px 5px rgba(0,0,0,.5);
+    text-shadow:0 -1px 0 rgba(0,0,0,.6);
+    transition:transform .04s;
   }
-  button:hover{background:var(--plastic3)}
+  button:hover{filter:brightness(1.13)}
+  button:active{
+    transform:translateY(2px);
+    box-shadow:inset 0 2px 5px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,244,210,.06), 0 0 0 #000;
+  }
   button:focus-visible{outline:2px solid var(--readout); outline-offset:1px}
-  button.active{background:var(--readout); color:var(--plastic); font-weight:700}
+  /* engaged key: pressed in, lit amber, LED pip */
+  button.active{
+    background:linear-gradient(180deg,#8a6a26,var(--readout) 40%,#c9a34f);
+    color:#1a1408; font-weight:700; text-shadow:0 1px 0 rgba(255,255,255,.25);
+    box-shadow:inset 0 2px 5px rgba(60,40,0,.55), inset 0 -1px 0 rgba(255,255,255,.25), 0 0 10px rgba(232,200,119,.35);
+    transform:translateY(1px); position:relative;
+  }
+  button.active::after{
+    content:''; position:absolute; top:4px; right:4px; width:5px; height:5px; border-radius:50%;
+    background:#ff5c33; box-shadow:0 0 6px #ff5c33;
+  }
   .grid2{display:grid; grid-template-columns:1fr 1fr; gap:5px}
   .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px}
   .grid3 button{text-align:center; padding:7px 2px}
   /* stage */
-  #stagewrap{display:flex; align-items:center; justify-content:center; min-width:0; min-height:0; background:
+  #stagewrap{display:flex; align-items:safe center; justify-content:safe center; min-width:0; min-height:0; overflow:auto; background:
     repeating-conic-gradient(var(--plastic) 0 25%, #221c14 0 50%) 0 0/28px 28px;}
+  #stage{padding:40px}
   #stage{position:relative; box-shadow:0 24px 70px rgba(0,0,0,.6)}
   canvas{display:block}
   /* palette chips */
   .chips{display:flex; gap:6px; flex-wrap:wrap}
-  .chip{width:30px; height:30px; border-radius:3px; border:2px solid var(--bezel); cursor:pointer; padding:0}
-  .chip.sel{border-color:var(--readout); box-shadow:0 0 10px var(--readout)}
+  .chip{width:30px; height:30px; border-radius:4px; border:2px solid #0d0a07; cursor:pointer; padding:0;
+    box-shadow:inset 0 2px 0 rgba(255,255,255,.28), inset 0 -3px 0 rgba(0,0,0,.35), 0 2px 0 #0b0805, 0 3px 4px rgba(0,0,0,.4)}
+  .chip:active{transform:translateY(2px); box-shadow:inset 0 2px 4px rgba(0,0,0,.5)}
+  .chip.sel{border-color:var(--readout); box-shadow:0 0 10px var(--readout), inset 0 2px 0 rgba(255,255,255,.28)}
+  .lay{box-shadow:inset 0 1px 0 rgba(255,244,210,.06), inset 0 -1px 0 rgba(0,0,0,.4)}
   .palrow{display:flex; gap:4px; margin-bottom:4px; cursor:pointer; border:1px solid transparent; border-radius:3px; padding:3px}
   .palrow.sel{border-color:var(--readout)}
   .palrow div{flex:1; height:16px; border-radius:2px}
@@ -57,7 +99,19 @@
   .lay .sw{width:12px;height:12px;border-radius:2px;flex:none}
   .lay .nm{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .lay .ko{font-size:9px; color:var(--alert)}
-  #readout{font-size:9px; letter-spacing:.15em; color:var(--crt); min-height:28px; line-height:1.5}
+  /* CRT readout: green phosphor behind glass */
+  #readout{
+    font-size:9px; letter-spacing:.15em; color:var(--crt); min-height:44px; line-height:1.55;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 100% at 50% 0%, #0e2012, #060d08 80%);
+    border:2px solid #0d0a07; border-radius:5px; padding:7px 9px;
+    box-shadow:inset 0 2px 8px rgba(0,0,0,.7), inset 0 0 22px rgba(127,209,138,.08), 0 1px 0 rgba(255,244,210,.08);
+    text-shadow:0 0 5px rgba(127,209,138,.65);
+  }
+  /* topbar transport styling */
+  #topbar button{padding:7px 12px 8px}
+  #topbar h1{text-shadow:0 1px 0 #000, 0 -1px 0 rgba(255,244,210,.12)}
   hr{border:none; border-top:1px solid var(--bezel); margin:2px 0}
 </style>
 
@@ -65,6 +119,9 @@
   <span class="lamp"></span><h1>RITUAL&nbsp;PRESS</h1>
   <span style="font-size:9px;letter-spacing:.2em;color:var(--readout-dim)">CONSTRAINED VECTOR STUDIO · v0</span>
   <span class="spacer"></span>
+  <button id="zoomout">−</button>
+  <button id="zoomlvl" title="reset zoom">100%</button>
+  <button id="zoomin">+</button>
   <button id="jmode" title="J MODE: symmetry liturgy — placements mirror across the axis, registers lock in">◈ J MODE</button>
   <button id="undo">⟲ UNDO</button>
   <button id="export">⇩ PNG</button>
@@ -579,6 +636,21 @@ document.getElementById('down').onclick=()=>{ if(sel<1)return;
   pushHistory(); [shapes[sel],shapes[sel-1]]=[shapes[sel-1],shapes[sel]]; sel--; render(); };
 
 // j mode / grain / undo / export
+// ---------- zoom ----------
+let zoom=1;
+const BASEW='min(46vw,460px)';
+function applyZoom(){
+  cv.style.width=zoom===1?BASEW:(460*zoom)+'px';
+  document.getElementById('zoomlvl').textContent=Math.round(zoom*100)+'%';
+}
+document.getElementById('zoomin').onclick=()=>{zoom=Math.min(4,zoom*1.25);applyZoom();say('zoom '+Math.round(zoom*100)+'%');};
+document.getElementById('zoomout').onclick=()=>{zoom=Math.max(.4,zoom/1.25);applyZoom();say('zoom '+Math.round(zoom*100)+'%');};
+document.getElementById('zoomlvl').onclick=()=>{zoom=1;applyZoom();say('zoom reset');};
+document.getElementById('stagewrap').addEventListener('wheel',e=>{
+  if(!(e.metaKey||e.ctrlKey))return; e.preventDefault();
+  zoom=Math.min(4,Math.max(.4,zoom*(e.deltaY<0?1.1:0.9))); applyZoom();
+},{passive:false});
+
 document.getElementById('jmode').onclick=e=>{ jmode=!jmode; e.currentTarget.classList.toggle('on',jmode); render();
   say(jmode?'J MODE — every placement mirrors; the liturgy holds':'j mode off'); };
 document.getElementById('grain').onclick=e=>{ grainOn=!grainOn; e.currentTarget.classList.toggle('active',grainOn);
