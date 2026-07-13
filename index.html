@@ -301,20 +301,58 @@ function lerpHex(a,b,t){
 function pushHistory(){history.push(JSON.stringify(shapes)); if(history.length>60)history.shift();}
 
 // ---------- shape rendering ----------
-function tracePath(s){
+function tracePath(s,c=x){
   const {kind,w,h}=s;
-  x.beginPath();
-  if(kind==='rect') x.rect(-w/2,-h/2,w,h);
-  else if(kind==='circle') x.ellipse(0,0,w/2,h/2,0,0,7);
-  else if(kind==='tri'){x.moveTo(0,-h/2);x.lineTo(w/2,h/2);x.lineTo(-w/2,h/2);x.closePath();}
-  else if(kind==='diamond'){x.moveTo(0,-h/2);x.lineTo(w/2,0);x.lineTo(0,h/2);x.lineTo(-w/2,0);x.closePath();}
-  else if(kind==='drop'){x.moveTo(0,h/2);x.quadraticCurveTo(-w/2,-h/6,0,-h/2);x.quadraticCurveTo(w/2,-h/6,0,h/2);}
-  else if(kind==='moon'){x.arc(0,0,Math.min(w,h)/2,0,7);}
-  else if(kind==='eye'){x.moveTo(-w/2,0);x.quadraticCurveTo(0,-h,w/2,0);x.quadraticCurveTo(0,h,-w/2,0);}
-  else if(kind==='arc'){x.arc(0,h/4,Math.min(w,h)/2,Math.PI,0);x.closePath();}
+  c.beginPath();
+  if(kind==='rect') c.rect(-w/2,-h/2,w,h);
+  else if(kind==='circle') c.ellipse(0,0,w/2,h/2,0,0,7);
+  else if(kind==='tri'){c.moveTo(0,-h/2);c.lineTo(w/2,h/2);c.lineTo(-w/2,h/2);c.closePath();}
+  else if(kind==='diamond'){c.moveTo(0,-h/2);c.lineTo(w/2,0);c.lineTo(0,h/2);c.lineTo(-w/2,0);c.closePath();}
+  else if(kind==='drop'){c.moveTo(0,h/2);c.quadraticCurveTo(-w/2,-h/6,0,-h/2);c.quadraticCurveTo(w/2,-h/6,0,h/2);}
+  else if(kind==='moon'){c.arc(0,0,Math.min(w,h)/2,0,7);}
+  else if(kind==='eye'){c.moveTo(-w/2,0);c.quadraticCurveTo(0,-h,w/2,0);c.quadraticCurveTo(0,h,-w/2,0);}
+  else if(kind==='arc'){c.arc(0,h/4,Math.min(w,h)/2,Math.PI,0);c.closePath();}
   else if(kind==='burst'){const n=12,r1=Math.min(w,h)/2,r0=r1*.45;
-    for(let i=0;i<n*2;i++){const r=i%2?r0:r1,a=i*Math.PI/n-Math.PI/2;x[i?'lineTo':'moveTo'](r*Math.cos(a),r*Math.sin(a));}x.closePath();}
-  else if(kind==='comb'){x.rect(-w/2,-h/2,w,h);} // bbox; strokes drawn in paint
+    for(let i=0;i<n*2;i++){const r=i%2?r0:r1,a=i*Math.PI/n-Math.PI/2;c[i?'lineTo':'moveTo'](r*Math.cos(a),r*Math.sin(a));}c.closePath();}
+  else if(kind==='comb'){c.rect(-w/2,-h/2,w,h);} // bbox; strokes drawn in paint
+}
+
+// texture & brush plate cache: heavy speck loops render once to an offscreen
+// canvas per (shape-geometry, texture, ink) and get blitted every frame after
+const texCache=new Map();
+function cachePut(k,v){ if(texCache.size>300)texCache.clear(); texCache.set(k,v); return v; }
+function drawBrush(x,s,ink){ // x = offscreen ctx, dabs at full alpha; ghost fades the blit
+  const g=mulberry32(s.seed||3);
+  x.fillStyle=ink;
+  for(let pi=0;pi<s.pts.length;pi++){
+    const p=s.pts[pi], q=s.pts[pi>0?pi-1:pi];
+    const ang=Math.atan2(p[1]-q[1],p[0]-q[0]);
+    const dabs=s.brush==='grit'?16:s.brush==='dry'?6:10;
+    for(let i=0;i<dabs;i++){
+      // gaussian-ish falloff: dense core, ragged edge
+      const a=g()*7, r=g()*g()*s.size;
+      const dx=p[0]+Math.cos(a)*r, dy=p[1]+Math.sin(a)*r;
+      if(s.brush==='grit'){x.globalAlpha=.5+g()*.5;
+        x.fillRect(dx,dy,.9+g()*1.3,.9+g()*1.3);}
+      else if(s.brush==='dry'){ // streaks follow the hand's direction
+        x.save();x.translate(dx,dy);x.rotate(ang+(g()-.5)*.35);
+        x.globalAlpha=.22+g()*.55;x.fillRect(0,-.8,5+g()*16,1.1+g()*1.5);x.restore();}
+      else {x.globalAlpha=.65+g()*.35;
+        x.beginPath();x.arc(dx,dy,.6+g()*g()*2,0,7);x.fill();}
+    }
+  }
+}
+function brushPlate(s,ink){
+  const key=['br',s.id,s.brush,s.size,ink,s.seed,s.pts.length].join('|');
+  const hit=texCache.get(key); if(hit)return hit;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const p of s.pts){x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);}
+  const m=s.size+24;
+  const c=document.createElement('canvas');
+  c.width=Math.max(2,x1-x0+2*m|0); c.height=Math.max(2,y1-y0+2*m|0);
+  const g=c.getContext('2d'); g.translate(m-x0,m-y0);
+  drawBrush(g,s,ink);
+  return cachePut(key,{c,ox:x0-m,oy:y0-m});
 }
 function paint(s,ghost,below){
   const ink=PALETTES[palIx].inks[s.ink];
@@ -359,25 +397,9 @@ function paint(s,ghost,below){
     x.restore(); return;
   }
   if(s.kind==='brush'){
-    const g=mulberry32(s.seed||3), base=ghost?.4:1;
-    x.fillStyle=ink;
-    for(let pi=0;pi<s.pts.length;pi++){
-      const p=s.pts[pi], q=s.pts[pi>0?pi-1:pi];
-      const ang=Math.atan2(p[1]-q[1],p[0]-q[0]);
-      const dabs=s.brush==='grit'?16:s.brush==='dry'?6:10;
-      for(let i=0;i<dabs;i++){
-        // gaussian-ish falloff: dense core, ragged edge
-        const a=g()*7, r=g()*g()*s.size;
-        const dx=p[0]+Math.cos(a)*r, dy=p[1]+Math.sin(a)*r;
-        if(s.brush==='grit'){x.globalAlpha=base*(.5+g()*.5);
-          x.fillRect(dx,dy,.9+g()*1.3,.9+g()*1.3);}
-        else if(s.brush==='dry'){ // streaks follow the hand's direction
-          x.save();x.translate(dx,dy);x.rotate(ang+(g()-.5)*.35);
-          x.globalAlpha=base*(.22+g()*.55);x.fillRect(0,-.8,5+g()*16,1.1+g()*1.5);x.restore();}
-        else {x.globalAlpha=base*(.65+g()*.35);
-          x.beginPath();x.arc(dx,dy,.6+g()*g()*2,0,7);x.fill();}
-      }
-    }
+    x.globalAlpha=ghost?.4:1;
+    const e=brushPlate(s,ink);
+    x.drawImage(e.c,e.ox,e.oy);
     x.restore(); return;
   }
   x.globalAlpha = ghost?0.4:1;
@@ -398,8 +420,21 @@ function paint(s,ghost,below){
   tracePath(s);
   if(s.fill==='solid'||s.knock){ x.fillStyle=ink; x.fill(); }
   else {
-    x.save(); x.clip();
-    x.fillStyle=ink; x.strokeStyle=ink;
+    const tc=texPlate(s,ink);
+    x.drawImage(tc,-tc.width/2,-tc.height/2);
+    tracePath(s); x.lineWidth=2; x.strokeStyle=ink; x.stroke();
+  }
+  x.restore();
+}
+function texPlate(s,ink){ // x = offscreen ctx; shadows the screen ctx on purpose
+  const key=['tx',s.kind,s.w|0,s.h|0,s.fill,ink,s.rough?1:0,s.seed,s.plateId||''].join('|');
+  const hit=texCache.get(key); if(hit)return hit;
+  const c=document.createElement('canvas');
+  c.width=Math.max(2,s.w+8|0); c.height=Math.max(2,s.h+8|0);
+  const x=c.getContext('2d'); x.translate(c.width/2,c.height/2);
+  tracePath(s,x); x.clip();
+  x.fillStyle=ink; x.strokeStyle=ink;
+  {
     const rough=!!s.rough, rg=mulberry32((s.seed||7)^0x5EED);
     if(s.fill==='halftone'){
       const st=14;
@@ -439,10 +474,10 @@ function paint(s,ghost,below){
       for(let j=-s.h/2;j<s.h/2;j+=5){
         let i=-s.w/2;
         while(i<s.w/2){ const len=8+g()*46, gap=3+g()*26;
-          if(g()<.75){x.globalAlpha=(ghost?.4:1)*(.45+g()*.55);x.fillRect(i,j,len,2+g()*2);}
+          if(g()<.75){x.globalAlpha=.45+g()*.55;x.fillRect(i,j,len,2+g()*2);}
           i+=len+gap; }
       }
-      x.globalAlpha=ghost?.4:1;
+      x.globalAlpha=1;
     } else if(s.fill==='plate'){
       const p=plateById(s.plateId);
       if(p){ x.fillStyle=x.createPattern(inkedPlate(p,ink),'repeat');
@@ -460,14 +495,15 @@ function paint(s,ghost,below){
         if(!inVoid&&g()<.8) x.fillRect(px,py,1.4+g()*1.6,1.1+g()*1.5);
       }
     }
-    x.restore();
-    tracePath(s); x.lineWidth=2; x.strokeStyle=ink; x.stroke();
   }
-  x.restore();
+  return cachePut(key,c);
 }
 
-// ---------- render ----------
-function render(){
+// ---------- render : draw() paints now, render() coalesces into one rAF ----------
+let rafPend=false;
+function render(){ if(rafPend)return; rafPend=true;
+  requestAnimationFrame(()=>{rafPend=false; draw();}); }
+function draw(){
   x.globalCompositeOperation='source-over'; x.globalAlpha=1;
   x.fillStyle=PALETTES[palIx].inks[0]; x.fillRect(0,0,W,H);
   shapes.forEach((s,i)=>paint(s,false,hostOf(s)||(i>0?shapes[i-1]:null)));
@@ -501,7 +537,10 @@ function render(){
   renderLayers();
   autosave();
 }
+let laySig='';
 function renderLayers(){
+  const sig=sel+'·'+palIx+'·'+shapes.map(s=>s.id+s.kind+s.fill+s.ink+(s.knock?1:0)+(s.clipped?1:0)).join(',');
+  if(sig===laySig)return; laySig=sig;
   const el=document.getElementById('layers'); el.innerHTML='';
   shapes.forEach((s,i)=>{
     const d=document.createElement('div'); d.className='lay'+(i===sel?' sel':'');
@@ -673,7 +712,7 @@ document.getElementById('undo').onclick=()=>{ if(!history.length)return say('not
 document.getElementById('export').onclick=()=>{
   const out=document.createElement('canvas'); out.width=W*2; out.height=H*2;
   const ox=out.getContext('2d'); ox.imageSmoothingEnabled=false;
-  const keep={jmode,selv:sel}; jmode=false; sel=-1; render();
+  const keep={jmode,selv:sel}; jmode=false; sel=-1; draw();
   ox.drawImage(cv,0,0,out.width,out.height);
   if(grainOn){ const im=ox.getImageData(0,0,out.width,out.height), d=im.data;
     for(let i=0;i<d.length;i+=4){const n=(Math.random()-.5)*18; d[i]+=n;d[i+1]+=n;d[i+2]+=n;}
@@ -741,7 +780,7 @@ function loadDoc(d){
   shapes=d.shapes; palIx=d.palIx||0; inkIx=d.inkIx??1; jmode=!!d.jmode; grainOn=d.grainOn!==false;
   uid=Math.max(d.uid||0,...shapes.map(s=>s.id||0));
   sel=-1; history=[]; tool=null; brushTool=null;
-  plates=[]; inkCache={}; curPlateId=null;
+  plates=[]; inkCache={}; texCache.clear(); curPlateId=null;
   (d.plates||[]).forEach(q=>{ const img=new Image();
     img.onload=()=>{ const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
       c.getContext('2d').drawImage(img,0,0);
